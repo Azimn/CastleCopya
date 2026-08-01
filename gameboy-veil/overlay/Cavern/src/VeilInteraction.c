@@ -6,7 +6,6 @@
 
 #define VEIL_WINDOW_W 20U
 #define VEIL_WINDOW_H 18U
-#define VEIL_FLAG_BLACKLAKE_CELL 0x1000U
 
 extern UINT16 roomNumber;
 

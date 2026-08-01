@@ -2,17 +2,23 @@
 #include "VeilMenu.h"
 #include "VeilMenuView.h"
 #include "VeilCampaign.h"
+#include "VeilInteraction.h"
 #include "Keys.h"
 
 void VeilRuntime_Init(void) {
     VeilMenu_Init();
     VeilMenuView_Init();
+    VeilInteraction_Init();
     if (!VeilCampaign_IsValid()) {
         VeilCampaign_NewGame();
     }
 }
 
 UINT8 VeilRuntime_Update(void) {
+    if (!veil_menu.is_open && VeilInteraction_Update()) {
+        return 1U;
+    }
+
     if (KEY_TICKED(J_START)) {
         if (veil_menu.is_open) {
             VeilMenu_Close();

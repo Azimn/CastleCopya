@@ -2,7 +2,6 @@
 #include "VeilMenu.h"
 #include "VeilCampaign.h"
 #include <gb/gb.h>
-#include <string.h>
 
 #define VEIL_MENU_W 20U
 #define VEIL_MENU_H 18U
@@ -33,22 +32,28 @@ static void draw_menu_list(void) {
     UINT8 i;
     for (i = 0U; i != VEIL_MENU_ITEM_COUNT; ++i) {
         draw_text(2U, (UINT8)(3U + i * 2U), VeilMenu_Label(i));
-        if (i == veil_menu.cursor) {
-            draw_text(0U, (UINT8)(3U + i * 2U), ">");
-        }
+        if (i == veil_menu.cursor) draw_text(0U, (UINT8)(3U + i * 2U), ">");
     }
 }
 
 static void draw_page(void) {
-    char buffer[20];
+    char buffer[3];
     clear_window();
     draw_text(1U, 0U, "VEIL OF NEVERWINTER");
 
     switch (veil_menu.page) {
         case VEIL_MENU_MAP:
             draw_text(1U, 3U, "MAP");
-            draw_text(1U, 5U, "BLACKLAKE DISTRICT");
-            draw_text(1U, 7U, "MISSION REGION 01");
+            if (VeilCampaign_HasFlag(VEIL_FLAG_M01_COMPLETE)) {
+                draw_text(1U, 5U, "BLACKLAKE CLEARED");
+                draw_text(1U, 7U, "TEMPLE QUARTER OPEN");
+            } else {
+                draw_text(1U, 5U, "BLACKLAKE DISTRICT");
+                if (VeilCampaign_HasFlag(VEIL_FLAG_BLACKLAKE_CELL))
+                    draw_text(1U, 7U, "CULT CELL MARKED");
+                else
+                    draw_text(1U, 7U, "SEARCH EAST BLOCK");
+            }
             break;
         case VEIL_MENU_INVENTORY:
             draw_text(1U, 3U, "INVENTORY");
@@ -63,15 +68,27 @@ static void draw_page(void) {
             buffer[1] = (char)('0' + (veil_campaign.companion_trust[0] % 10U));
             buffer[2] = '\0';
             draw_text(8U, 7U, buffer);
+            if (VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_RESOLVED)) {
+                draw_text(1U, 9U, VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_PUBLIC) ? "STATUS: PUBLIC" : "STATUS: HIDDEN");
+            } else {
+                draw_text(1U, 9U, "STATUS: UNDECIDED");
+            }
             break;
         case VEIL_MENU_JOURNAL:
             draw_text(1U, 3U, "JOURNAL");
-            draw_text(1U, 5U, "ASHES IN BLACKLAKE");
-            if (VeilCampaign_HasFlag(VEIL_FLAG_BLACKLAKE_CELL)) {
-                draw_text(1U, 7U, "CULT CELL FOUND");
-                draw_text(1U, 9U, "SPEAK WITH VAELITH");
+            if (VeilCampaign_HasFlag(VEIL_FLAG_M01_COMPLETE)) {
+                draw_text(1U, 5U, "M02 THE WARNING");
+                draw_text(1U, 7U, "GO TO TEMPLE QUARTER");
+                draw_text(1U, 9U, "M01 COMPLETE");
             } else {
-                draw_text(1U, 7U, "FIND THE CULT CELL");
+                draw_text(1U, 5U, "ASHES IN BLACKLAKE");
+                if (!VeilCampaign_HasFlag(VEIL_FLAG_BLACKLAKE_CELL)) {
+                    draw_text(1U, 7U, "FIND THE CULT CELL");
+                } else if (!VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_RESOLVED)) {
+                    draw_text(1U, 7U, "SPEAK WITH VAELITH");
+                } else {
+                    draw_text(1U, 7U, "RETURN TO WEST GATE");
+                }
             }
             break;
         case VEIL_MENU_CONTROLS:
@@ -110,9 +127,7 @@ void VeilMenuView_Hide(void) {
 }
 
 void VeilMenuView_Render(void) {
-    if (!visible) {
-        return;
-    }
+    if (!visible) return;
     if (veil_menu.page < VEIL_MENU_ITEM_COUNT) {
         draw_page();
     } else {

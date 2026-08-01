@@ -1,0 +1,69 @@
+name: Build Veil Game Boy Foundation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - veil-cavern-integration
+    paths:
+      - '.github/workflows/build-veil-gameboy.yml'
+      - 'gameboy-veil/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout integration repository
+        uses: actions/checkout@v4
+
+      - name: Fetch pinned Cavern-GB foundation
+        run: |
+          git clone https://github.com/TheGreatGallus/Cavern-GB.git upstream-cavern
+          cd upstream-cavern
+          git checkout f412101f0d29e402f2975ab8f04ef50740de9b33
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make curl jq unzip xz-utils
+
+      - name: Install GBDK-2020
+        run: |
+          API_URL=https://api.github.com/repos/gbdk-2020/gbdk-2020/releases/latest
+          ASSET_URL=$(curl -fsSL "$API_URL" | jq -r '.assets[] | select(.name | test("linux64.*tar.gz$")) | .browser_download_url' | head -n 1)
+          test -n "$ASSET_URL"
+          curl -fsSL "$ASSET_URL" -o gbdk.tar.gz
+          mkdir -p "$HOME/gbdk"
+          tar -xzf gbdk.tar.gz -C "$HOME/gbdk" --strip-components=1
+
+      - name: Apply Veil overlay
+        run: |
+          if [ -d gameboy-veil/overlay ]; then
+            cp -a gameboy-veil/overlay/. upstream-cavern/
+          fi
+
+      - name: Build ROM
+        env:
+          GBDK_HOME: ${{ github.workspace }}/../gbdk
+          ZGB_PATH: ${{ github.workspace }}/upstream-cavern/ZGB
+        run: |
+          export GBDK_HOME="$HOME/gbdk"
+          export ZGB_PATH="$GITHUB_WORKSPACE/upstream-cavern/ZGB"
+          make -C upstream-cavern/Cavern/src
+          find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' \) -print
+
+      - name: Collect build outputs
+        run: |
+          mkdir -p dist
+          find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' -o -name '*.map' -o -name '*.noi' \) -exec cp {} dist/ \;
+          test -n "$(find dist -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
+          sha256sum dist/* > dist/SHA256SUMS.txt
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: veil-cavern-gameboy-build
+          path: dist/
+          if-no-files-found: error

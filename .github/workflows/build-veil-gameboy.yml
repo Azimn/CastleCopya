@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
 
     steps:
       - name: Checkout integration repository
@@ -30,12 +30,11 @@ jobs:
           cd vendor-yurivania2
           git checkout e95a78c86184b0185769249feb327240d1a6e980
           find . -type f -not -path './.git/*' -print0 | sort -z | xargs -0 sha256sum > ../YURIVANIA2_SHA256SUMS.txt
-          cp LICENSE.txt ../YURIVANIA2_LICENSE.txt
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y make curl jq unzip xz-utils
+          sudo apt-get install -y make curl jq unzip xz-utils python3
 
       - name: Install GBDK-2020
         run: |
@@ -51,6 +50,13 @@ jobs:
           if [ -d gameboy-veil/overlay ]; then
             cp -a gameboy-veil/overlay/. upstream-cavern/
           fi
+          python3 gameboy-veil/tools/patch_cavern_state.py
+
+      - name: Verify integration hooks
+        run: |
+          grep -q '#include "VeilRuntime.h"' upstream-cavern/Cavern/src/StateGame.c
+          grep -q 'VeilRuntime_Init();' upstream-cavern/Cavern/src/StateGame.c
+          grep -q 'if (VeilRuntime_Update())' upstream-cavern/Cavern/src/StateGame.c
 
       - name: Build ROM
         env:
@@ -64,12 +70,14 @@ jobs:
 
       - name: Collect build outputs
         run: |
-          mkdir -p dist/notices
+          mkdir -p dist/licenses dist/manifests
           find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' -o -name '*.map' -o -name '*.noi' \) -exec cp {} dist/ \;
-          cp YURIVANIA2_LICENSE.txt dist/notices/
-          cp YURIVANIA2_SHA256SUMS.txt dist/notices/
-          cp gameboy-veil/THIRD_PARTY_LEDGER.csv dist/notices/
-          test -n "$(find dist -maxdepth 1 -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
+          cp gameboy-veil/THIRD_PARTY_LEDGER.csv dist/
+          cp YURIVANIA2_SHA256SUMS.txt dist/manifests/
+          cp vendor-yurivania2/LICENSE.txt dist/licenses/YURIVANIA2_LICENSE.txt
+          cp upstream-cavern/LICENSE dist/licenses/CAVERN_LICENSE.txt
+          cp upstream-cavern/ZGB/LICENSE.txt dist/licenses/ZGB_LICENSE.txt
+          test -n "$(find dist -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
           find dist -type f -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS.txt
 
       - name: Upload ROM artifact

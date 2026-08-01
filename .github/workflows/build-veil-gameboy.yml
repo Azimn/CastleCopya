@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout integration repository
@@ -23,6 +23,14 @@ jobs:
           git clone https://github.com/TheGreatGallus/Cavern-GB.git upstream-cavern
           cd upstream-cavern
           git checkout f412101f0d29e402f2975ab8f04ef50740de9b33
+
+      - name: Fetch pinned Yurivania 2 donor
+        run: |
+          git clone https://github.com/mxashlynn/Yurivania-2.git vendor-yurivania2
+          cd vendor-yurivania2
+          git checkout e95a78c86184b0185769249feb327240d1a6e980
+          find . -type f -not -path './.git/*' -print0 | sort -z | xargs -0 sha256sum > ../YURIVANIA2_SHA256SUMS.txt
+          cp LICENSE.txt ../YURIVANIA2_LICENSE.txt
 
       - name: Install build dependencies
         run: |
@@ -56,10 +64,13 @@ jobs:
 
       - name: Collect build outputs
         run: |
-          mkdir -p dist
+          mkdir -p dist/notices
           find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' -o -name '*.map' -o -name '*.noi' \) -exec cp {} dist/ \;
-          test -n "$(find dist -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
-          sha256sum dist/* > dist/SHA256SUMS.txt
+          cp YURIVANIA2_LICENSE.txt dist/notices/
+          cp YURIVANIA2_SHA256SUMS.txt dist/notices/
+          cp gameboy-veil/THIRD_PARTY_LEDGER.csv dist/notices/
+          test -n "$(find dist -maxdepth 1 -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
+          find dist -type f -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS.txt
 
       - name: Upload ROM artifact
         uses: actions/upload-artifact@v4

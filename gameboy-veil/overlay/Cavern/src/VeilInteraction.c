@@ -5,12 +5,10 @@
 #include <gb/gb.h>
 
 #define VEIL_WINDOW_W 20U
-#define VEIL_WINDOW_H 18U
 
 extern UINT16 roomNumber;
 
 struct VeilInteractionState veil_interaction;
-
 static const unsigned char blank_tile = 0U;
 
 static void draw_text(UINT8 x, UINT8 y, const char* text) {
@@ -38,6 +36,17 @@ static UINT8 player_in_zone(UINT16 min_x, UINT16 max_x, UINT16 min_y, UINT16 max
            scroll_target->y >= min_y && scroll_target->y <= max_y;
 }
 
+static void show_message(const char* line1, const char* line2, const char* line3) {
+    veil_interaction.message_timer = 90U;
+    WX_REG = 7U;
+    WY_REG = 112U;
+    SHOW_WIN;
+    clear_rows(0U, 4U);
+    draw_text(1U, 0U, line1);
+    draw_text(1U, 1U, line2);
+    draw_text(1U, 2U, line3);
+}
+
 static void show_prompt(void) {
     WX_REG = 7U;
     WY_REG = 128U;
@@ -53,8 +62,8 @@ static void hide_prompt(void) {
 
 static void open_dialogue(void) {
     veil_interaction.dialogue_open = 1U;
-    veil_interaction.dialogue_node = 0U;
     veil_interaction.choice = 0U;
+    veil_interaction.dialogue_node = VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_RESOLVED) ? 3U : 0U;
     WX_REG = 7U;
     WY_REG = 80U;
     SHOW_WIN;
@@ -71,9 +80,17 @@ static void apply_choice(void) {
         VeilCampaign_AdjustTrust(0U, 1);
         VeilCampaign_AdjustFaction(3U, 1);
     }
+    VeilCampaign_SetFlag(VEIL_FLAG_VAELITH_RESOLVED);
     veil_campaign.checksum = VeilCampaign_CalculateChecksum();
     veil_interaction.dialogue_node = 2U;
     VeilInteraction_Render();
+}
+
+static void complete_m01(void) {
+    VeilCampaign_SetFlag(VEIL_FLAG_M01_COMPLETE);
+    veil_campaign.mission = 1U;
+    veil_campaign.checksum = VeilCampaign_CalculateChecksum();
+    show_message("MISSION COMPLETE", "ASHES IN BLACKLAKE", "NEW LEAD: THE WARNING");
 }
 
 void VeilInteraction_Init(void) {
@@ -113,10 +130,9 @@ UINT8 VeilInteraction_Update(void) {
                 veil_interaction.choice ^= 1U;
                 VeilInteraction_Render();
             }
-            if (KEY_TICKED(J_A)) {
-                apply_choice();
-            }
-        } else if (veil_interaction.dialogue_node == 2U && (KEY_TICKED(J_A) || KEY_TICKED(J_B))) {
+            if (KEY_TICKED(J_A)) apply_choice();
+        } else if ((veil_interaction.dialogue_node == 2U || veil_interaction.dialogue_node == 3U) &&
+                   (KEY_TICKED(J_A) || KEY_TICKED(J_B))) {
             VeilInteraction_Close();
         } else if (KEY_TICKED(J_B)) {
             VeilInteraction_Close();
@@ -128,14 +144,16 @@ UINT8 VeilInteraction_Update(void) {
         player_in_zone(168U, 224U, 144U, 352U)) {
         VeilCampaign_SetFlag(VEIL_FLAG_BLACKLAKE_CELL);
         veil_campaign.checksum = VeilCampaign_CalculateChecksum();
-        veil_interaction.message_timer = 90U;
-        WX_REG = 7U;
-        WY_REG = 112U;
-        SHOW_WIN;
-        clear_rows(0U, 4U);
-        draw_text(1U, 0U, "OBJECTIVE COMPLETE");
-        draw_text(1U, 1U, "CULT CELL FOUND");
-        draw_text(1U, 2U, "FIND VAELITH");
+        show_message("OBJECTIVE COMPLETE", "CULT CELL FOUND", "FIND VAELITH");
+        return 1U;
+    }
+
+    if (roomNumber == 1U &&
+        VeilCampaign_HasFlag(VEIL_FLAG_BLACKLAKE_CELL) &&
+        VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_RESOLVED) &&
+        !VeilCampaign_HasFlag(VEIL_FLAG_M01_COMPLETE) &&
+        player_in_zone(8U, 40U, 176U, 352U)) {
+        complete_m01();
         return 1U;
     }
 
@@ -176,7 +194,7 @@ void VeilInteraction_Render(void) {
         draw_text(3U, 4U, "KEEP HER HIDDEN");
         draw_text(1U, veil_interaction.choice ? 4U : 2U, ">");
         draw_text(1U, 6U, "A CHOOSE  B LEAVE");
-    } else {
+    } else if (veil_interaction.dialogue_node == 2U) {
         draw_text(1U, 0U, "VAELITH");
         if (VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_PUBLIC)) {
             draw_text(1U, 2U, "THEN LET THEM SEE.");
@@ -184,6 +202,20 @@ void VeilInteraction_Render(void) {
         } else {
             draw_text(1U, 2U, "QUIETLY, THEN.");
             draw_text(1U, 3U, "I OWE YOU THAT.");
+        }
+        draw_text(1U, 5U, "RETURN TO THE GATE.");
+        draw_text(1U, 6U, "A CLOSE");
+    } else {
+        draw_text(1U, 0U, "VAELITH");
+        if (VeilCampaign_HasFlag(VEIL_FLAG_M01_COMPLETE)) {
+            draw_text(1U, 2U, "BLACKLAKE REMEMBERS.");
+            draw_text(1U, 3U, "SO WILL THE CULT.");
+        } else if (VeilCampaign_HasFlag(VEIL_FLAG_VAELITH_PUBLIC)) {
+            draw_text(1U, 2U, "THE GATE IS WEST.");
+            draw_text(1U, 3U, "WE LEAVE TOGETHER.");
+        } else {
+            draw_text(1U, 2U, "I WILL FOLLOW QUIETLY.");
+            draw_text(1U, 3U, "TAKE THE WEST GATE.");
         }
         draw_text(1U, 6U, "A CLOSE");
     }

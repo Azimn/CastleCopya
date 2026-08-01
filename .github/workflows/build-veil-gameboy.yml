@@ -1,4 +1,4 @@
-name: Build Veil Game Boy Foundation
+name: Build and Playtest Veil Game Boy
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout integration repository
@@ -31,10 +31,11 @@ jobs:
           git checkout e95a78c86184b0185769249feb327240d1a6e980
           find . -type f -not -path './.git/*' -print0 | sort -z | xargs -0 sha256sum > ../YURIVANIA2_SHA256SUMS.txt
 
-      - name: Install build dependencies
+      - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y make curl jq unzip xz-utils python3
+          sudo apt-get install -y make curl jq unzip xz-utils python3 python3-pip
+          python3 -m pip install --disable-pip-version-check pyboy pillow
 
       - name: Install GBDK-2020
         run: |
@@ -47,9 +48,7 @@ jobs:
 
       - name: Apply Veil overlay
         run: |
-          if [ -d gameboy-veil/overlay ]; then
-            cp -a gameboy-veil/overlay/. upstream-cavern/
-          fi
+          cp -a gameboy-veil/overlay/. upstream-cavern/
           python3 gameboy-veil/tools/patch_cavern_state.py
 
       - name: Verify integration hooks
@@ -57,6 +56,8 @@ jobs:
           grep -q '#include "VeilRuntime.h"' upstream-cavern/Cavern/src/StateGame.c
           grep -q 'VeilRuntime_Init();' upstream-cavern/Cavern/src/StateGame.c
           grep -q 'if (VeilRuntime_Update())' upstream-cavern/Cavern/src/StateGame.c
+          grep -q 'VEIL_FLAG_M01_COMPLETE' upstream-cavern/Cavern/include/VeilCampaign.h
+          grep -q 'MISSION COMPLETE' upstream-cavern/Cavern/src/VeilInteraction.c
 
       - name: Build ROM
         env:
@@ -66,12 +67,25 @@ jobs:
           export GBDK_HOME="$HOME/gbdk"
           export ZGB_PATH="$GITHUB_WORKSPACE/upstream-cavern/ZGB"
           make -C upstream-cavern/Cavern/src
-          find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' \) -print
+          ROM_PATH=$(find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)
+          test -n "$ROM_PATH"
+          echo "ROM_PATH=$ROM_PATH" >> "$GITHUB_ENV"
 
-      - name: Collect build outputs
+      - name: Validate ROM integrity
         run: |
-          mkdir -p dist/licenses dist/manifests
+          mkdir -p playtest-evidence
+          python3 gameboy-veil/tests/validate_rom.py "$ROM_PATH" --report playtest-evidence/ROM_VALIDATION.txt
+
+      - name: Run PyBoy smoke test
+        run: |
+          python3 gameboy-veil/tests/pyboy_smoke.py "$ROM_PATH" --output playtest-evidence
+
+      - name: Collect playtest package
+        run: |
+          mkdir -p dist/licenses dist/manifests dist/playtest-evidence
           find upstream-cavern -type f \( -name '*.gb' -o -name '*.gbc' -o -name '*.map' -o -name '*.noi' \) -exec cp {} dist/ \;
+          cp -a playtest-evidence/. dist/playtest-evidence/
+          cp gameboy-veil/PLAYTEST_GUIDE.md dist/
           cp gameboy-veil/THIRD_PARTY_LEDGER.csv dist/
           cp YURIVANIA2_SHA256SUMS.txt dist/manifests/
           cp vendor-yurivania2/LICENSE.txt dist/licenses/YURIVANIA2_LICENSE.txt
@@ -80,9 +94,9 @@ jobs:
           test -n "$(find dist -type f \( -name '*.gb' -o -name '*.gbc' \) -print -quit)"
           find dist -type f -print0 | sort -z | xargs -0 sha256sum > dist/SHA256SUMS.txt
 
-      - name: Upload ROM artifact
+      - name: Upload playtest package
         uses: actions/upload-artifact@v4
         with:
-          name: veil-cavern-gameboy-build
+          name: veil-of-neverwinter-playtest
           path: dist/
           if-no-files-found: error

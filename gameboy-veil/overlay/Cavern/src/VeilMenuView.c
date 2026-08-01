@@ -67,7 +67,12 @@ static void draw_page(void) {
         case VEIL_MENU_JOURNAL:
             draw_text(1U, 3U, "JOURNAL");
             draw_text(1U, 5U, "ASHES IN BLACKLAKE");
-            draw_text(1U, 7U, "FIND THE CULT CELL");
+            if (VeilCampaign_HasFlag(VEIL_FLAG_BLACKLAKE_CELL)) {
+                draw_text(1U, 7U, "CULT CELL FOUND");
+                draw_text(1U, 9U, "SPEAK WITH VAELITH");
+            } else {
+                draw_text(1U, 7U, "FIND THE CULT CELL");
+            }
             break;
         case VEIL_MENU_CONTROLS:
             draw_text(1U, 3U, "CONTROLS");
